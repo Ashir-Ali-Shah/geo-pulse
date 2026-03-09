@@ -14,6 +14,12 @@ const jetbrainsMono = JetBrains_Mono({
   display: "swap",
 });
 
+/**
+ * Site Metadata
+ * 
+ * Configures the global SEO metadata, page title, description, and OpenGraph 
+ * details used across the GeoPulse Predictor application.
+ */
 export const metadata: Metadata = {
   title: "GeoPulse Predictor — Global Conflict Intelligence",
   description:
@@ -32,6 +38,16 @@ export const metadata: Metadata = {
   },
 };
 
+/**
+ * Root Layout Component
+ * 
+ * Provides the core HTML structure for the Next.js App Router.
+ * Configures global typography (Space Grotesk and JetBrains Mono)
+ * and sets up basic anti-aliased styling for the `<body>`.
+ * 
+ * @param {Object} props
+ * @param {React.ReactNode} props.children The page components to render within the layout.
+ */
 export default function RootLayout({
   children,
 }: {
