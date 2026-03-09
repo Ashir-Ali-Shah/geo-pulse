@@ -31,7 +31,7 @@ export async function GET(req: NextRequest) {
         ? (rawRegion as RegionKey)
         : "unknown";
 
-    const regionImpact = getRegionImpact(region);
+    const regionImpact = await getRegionImpact(region);
 
     const response: CommodityApiResponse = {
         regions: [regionImpact],
@@ -40,7 +40,8 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json(response, {
         headers: {
-            "Cache-Control": "public, s-maxage=60",
+            // Next.js handles caching the twelve data fetches, but we also cache the API route
+            "Cache-Control": "public, s-maxage=3600",
         },
     });
 }

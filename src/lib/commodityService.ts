@@ -1,284 +1,41 @@
 /**
  * commodityService.ts
  *
- * Provides region-specific commodity data (mocked with realistic data,
- * structured for easy swap-in with a live AlphaVantage / commodity API).
- *
- * Single Responsibility: commodity data retrieval and formatting only.
+ * Provides real-time commodity data using the Twelve Data API (via ETF proxies).
+ * Automatically caches responses to respect the 800 calls/day free tier limit.
  */
 
 import { RegionImpact, RegionKey, Commodity } from "@/types";
 
-// ─── Mock commodity data per region ─────────────────────────────────────────
+// ─── ETF Proxy Mappings for Commodities ───────────────────────────────────────
+// We use highly liquid ETFs as proxies because live commodity spot/futures
+// data is typically restricted on free financial API tiers.
+const SYMBOL_MAP: Record<string, { name: string; unit: string }> = {
+    USO: { name: "Crude Oil (WTI)", unit: "USD" },
+    UNG: { name: "Natural Gas", unit: "USD" },
+    GLD: { name: "Gold", unit: "USD" },
+    WEAT: { name: "Wheat", unit: "USD" },
+    CORN: { name: "Corn", unit: "USD" },
+    SOXX: { name: "Semiconductors", unit: "USD" },
+    COPX: { name: "Copper Miners", unit: "USD" },
+    URA: { name: "Uranium", unit: "USD" },
+};
 
-const REGION_COMMODITIES: Record<RegionKey, Commodity[]> = {
-    middle_east: [
-        {
-            name: "Crude Oil (Brent)",
-            symbol: "BCO",
-            price: 87.42,
-            change: 2.14,
-            changePercent: 2.51,
-            unit: "USD/bbl",
-            trend: "up",
-        },
-        {
-            name: "Natural Gas",
-            symbol: "NG",
-            price: 3.21,
-            change: 0.18,
-            changePercent: 5.94,
-            unit: "USD/MMBtu",
-            trend: "up",
-        },
-        {
-            name: "Gold",
-            symbol: "XAU",
-            price: 2318.5,
-            change: 12.3,
-            changePercent: 0.53,
-            unit: "USD/oz",
-            trend: "up",
-        },
-    ],
-    europe: [
-        {
-            name: "Natural Gas (TTF)",
-            symbol: "TTF",
-            price: 34.82,
-            change: -1.2,
-            changePercent: -3.33,
-            unit: "EUR/MWh",
-            trend: "down",
-        },
-        {
-            name: "Wheat",
-            symbol: "ZW",
-            price: 612.25,
-            change: 8.5,
-            changePercent: 1.41,
-            unit: "USc/bu",
-            trend: "up",
-        },
-        {
-            name: "Palladium",
-            symbol: "XPD",
-            price: 1024.0,
-            change: -5.5,
-            changePercent: -0.53,
-            unit: "USD/oz",
-            trend: "down",
-        },
-    ],
-    east_asia: [
-        {
-            name: "Copper",
-            symbol: "HG",
-            price: 4.58,
-            change: 0.06,
-            changePercent: 1.33,
-            unit: "USD/lb",
-            trend: "up",
-        },
-        {
-            name: "Iron Ore",
-            symbol: "FEF",
-            price: 112.4,
-            change: -3.2,
-            changePercent: -2.77,
-            unit: "USD/t",
-            trend: "down",
-        },
-        {
-            name: "Semiconductor Index",
-            symbol: "SOX",
-            price: 4821.0,
-            change: -88.0,
-            changePercent: -1.79,
-            unit: "pts",
-            trend: "down",
-        },
-    ],
-    south_asia: [
-        {
-            name: "Rice",
-            symbol: "ZR",
-            price: 18.4,
-            change: 0.3,
-            changePercent: 1.66,
-            unit: "USD/cwt",
-            trend: "up",
-        },
-        {
-            name: "Cotton",
-            symbol: "CT",
-            price: 84.52,
-            change: -0.72,
-            changePercent: -0.84,
-            unit: "USc/lb",
-            trend: "down",
-        },
-        {
-            name: "Crude Oil (WTI)",
-            symbol: "CL",
-            price: 83.15,
-            change: 1.55,
-            changePercent: 1.9,
-            unit: "USD/bbl",
-            trend: "up",
-        },
-    ],
-    africa: [
-        {
-            name: "Cocoa",
-            symbol: "CC",
-            price: 9420.0,
-            change: 310.0,
-            changePercent: 3.41,
-            unit: "USD/t",
-            trend: "up",
-        },
-        {
-            name: "Coffee (Arabica)",
-            symbol: "KC",
-            price: 228.5,
-            change: 4.5,
-            changePercent: 2.01,
-            unit: "USc/lb",
-            trend: "up",
-        },
-        {
-            name: "Gold",
-            symbol: "XAU",
-            price: 2318.5,
-            change: 12.3,
-            changePercent: 0.53,
-            unit: "USD/oz",
-            trend: "up",
-        },
-    ],
-    latin_america: [
-        {
-            name: "Soybeans",
-            symbol: "ZS",
-            price: 1188.75,
-            change: -5.5,
-            changePercent: -0.46,
-            unit: "USc/bu",
-            trend: "down",
-        },
-        {
-            name: "Sugar #11",
-            symbol: "SB",
-            price: 19.82,
-            change: 0.14,
-            changePercent: 0.71,
-            unit: "USc/lb",
-            trend: "up",
-        },
-        {
-            name: "Copper",
-            symbol: "HG",
-            price: 4.58,
-            change: 0.06,
-            changePercent: 1.33,
-            unit: "USD/lb",
-            trend: "up",
-        },
-    ],
-    north_america: [
-        {
-            name: "Crude Oil (WTI)",
-            symbol: "CL",
-            price: 83.15,
-            change: 1.55,
-            changePercent: 1.9,
-            unit: "USD/bbl",
-            trend: "up",
-        },
-        {
-            name: "Natural Gas",
-            symbol: "NG",
-            price: 3.21,
-            change: 0.18,
-            changePercent: 5.94,
-            unit: "USD/MMBtu",
-            trend: "up",
-        },
-        {
-            name: "Corn",
-            symbol: "ZC",
-            price: 452.0,
-            change: -2.75,
-            changePercent: -0.6,
-            unit: "USc/bu",
-            trend: "down",
-        },
-    ],
-    central_asia: [
-        {
-            name: "Uranium",
-            symbol: "URA",
-            price: 91.5,
-            change: 0.5,
-            changePercent: 0.55,
-            unit: "USD/lb",
-            trend: "up",
-        },
-        {
-            name: "Crude Oil (Brent)",
-            symbol: "BCO",
-            price: 87.42,
-            change: 2.14,
-            changePercent: 2.51,
-            unit: "USD/bbl",
-            trend: "up",
-        },
-    ],
-    oceania: [
-        {
-            name: "Iron Ore",
-            symbol: "FEF",
-            price: 112.4,
-            change: -3.2,
-            changePercent: -2.77,
-            unit: "USD/t",
-            trend: "down",
-        },
-        {
-            name: "Coal (Thermal)",
-            symbol: "MTF",
-            price: 128.0,
-            change: -2.5,
-            changePercent: -1.91,
-            unit: "USD/t",
-            trend: "down",
-        },
-    ],
-    unknown: [
-        {
-            name: "Gold",
-            symbol: "XAU",
-            price: 2318.5,
-            change: 12.3,
-            changePercent: 0.53,
-            unit: "USD/oz",
-            trend: "up",
-        },
-        {
-            name: "Crude Oil (Brent)",
-            symbol: "BCO",
-            price: 87.42,
-            change: 2.14,
-            changePercent: 2.51,
-            unit: "USD/bbl",
-            trend: "up",
-        },
-    ],
+// ─── Region to Asset Mapping ──────────────────────────────────────────────────
+const REGION_ASSETS: Record<RegionKey, string[]> = {
+    middle_east: ["USO", "UNG", "GLD"],
+    europe: ["WEAT", "UNG", "SOXX"],
+    east_asia: ["SOXX", "GLD", "COPX"],
+    south_asia: ["WEAT", "USO", "CORN"],
+    africa: ["URA", "GLD", "USO"],
+    latin_america: ["CORN", "WEAT", "COPX"],
+    north_america: ["USO", "UNG", "CORN"],
+    central_asia: ["URA", "GLD", "USO"],
+    oceania: ["COPX", "UNG", "GLD"],
+    unknown: ["USO", "GLD", "WEAT"],
 };
 
 // ─── Risk summaries per region ───────────────────────────────────────────────
-
 const REGION_SUMMARIES: Record<
     RegionKey,
     { riskLevel: RegionImpact["riskLevel"]; summary: string }
@@ -301,31 +58,31 @@ const REGION_SUMMARIES: Record<
     south_asia: {
         riskLevel: "moderate",
         summary:
-            "Regional instability affecting agricultural trade routes. Rice and cotton exports under pressure.",
+            "Regional instability affecting agricultural trade routes. Grain exports under pressure.",
     },
     africa: {
         riskLevel: "high",
         summary:
-            "Sahel instability and coup governance gaps disrupting cocoa and mining exports from West Africa.",
+            "Sahel instability and domestic conflicts disrupting agricultural and mining exports.",
     },
     latin_america: {
         riskLevel: "moderate",
         summary:
-            "Political volatility in Venezuela and Mexico affecting soybean, sugar, and commodity export flows.",
+            "Political volatility affecting agricultural yields and copper mining output.",
     },
     north_america: {
         riskLevel: "low",
-        summary: "Domestic markets stable. Energy sector benefiting from elevated oil prices.",
+        summary: "Domestic markets stable. Energy sector absorbing global supply shocks.",
     },
     central_asia: {
         riskLevel: "moderate",
         summary:
-            "Geopolitical realignment following Russia sanctions opening new transit corridors, but with risks.",
+            "Geopolitical realignment and sanctions shifting energy and uranium transit corridors.",
     },
     oceania: {
         riskLevel: "low",
         summary:
-            "Stable, but China trade tensions continue to impact Australian iron ore and coal exports.",
+            "Stable, but global trade tensions continue to impact mining exports.",
     },
     unknown: {
         riskLevel: "low",
@@ -333,19 +90,86 @@ const REGION_SUMMARIES: Record<
     },
 };
 
+// ─── Live Data Fetching ───────────────────────────────────────────────────────
+
+/**
+ * Fetches real-time price data from Twelve Data.
+ * Uses Next.js data caching (revalidate: 3600 seconds / 60 mins) to stay well
+ * within the 800 req/day limit for the API.
+ */
+async function fetchTwelveDataQuotes(symbols: string[]): Promise<Commodity[]> {
+    const apiKey = process.env.TWELVE_DATA_API_KEY;
+    if (!apiKey) {
+        console.warn("TWELVE_DATA_API_KEY is not set. Returning empty commodities.");
+        return [];
+    }
+
+    const symbolList = symbols.join(",");
+    // We request time_series with outputsize=2 to get the latest close and the previous close
+    // to calculate the accurate daily % change.
+    const url = `https://api.twelvedata.com/time_series?symbol=${symbolList}&interval=1day&outputsize=2&apikey=${apiKey}`;
+
+    const res = await fetch(url, { next: { revalidate: 3600 } });
+
+    if (!res.ok) {
+        console.error("Failed to fetch from Twelve Data:", res.status);
+        return [];
+    }
+
+    const data = await res.json();
+    const commodities: Commodity[] = [];
+
+    // Twelve Data single vs multiple symbols response format:
+    // If multiple symbols: data = { "AAPL": { values: [...] }, "MSFT": { ... } }
+    // If single symbol: data = { meta: {...}, values: [...] }
+
+    const isSingleSymbol = symbols.length === 1;
+    const items = isSingleSymbol ? { [symbols[0]]: data } : data;
+
+    for (const symbol of symbols) {
+        const item = items[symbol];
+        if (item?.status === "ok" && item.values && item.values.length >= 2) {
+            const currentClose = parseFloat(item.values[0].close);
+            const prevClose = parseFloat(item.values[1].close);
+            const change = currentClose - prevClose;
+            const changePercent = (change / prevClose) * 100;
+
+            let trend: "up" | "down" | "flat" = "flat";
+            if (change > 0) trend = "up";
+            if (change < 0) trend = "down";
+
+            const metaInfo = SYMBOL_MAP[symbol];
+
+            commodities.push({
+                name: metaInfo?.name ?? symbol,
+                symbol,
+                price: currentClose,
+                change,
+                changePercent,
+                unit: metaInfo?.unit ?? "USD",
+                trend,
+            });
+        }
+    }
+
+    return commodities;
+}
+
 // ─── Public API ──────────────────────────────────────────────────────────────
 
 /**
- * Returns the commodity impact data for a given region.
- * Designed to be easily swapped for a live API call.
+ * Returns the live commodity impact data for a given region.
  */
-export function getRegionImpact(region: RegionKey): RegionImpact {
-    const commodities = REGION_COMMODITIES[region] ?? REGION_COMMODITIES.unknown;
-    const { riskLevel, summary } = REGION_SUMMARIES[region] ?? REGION_SUMMARIES.unknown;
+export async function getRegionImpact(region: RegionKey): Promise<RegionImpact> {
+    const defaultRegion = REGION_ASSETS[region] ? region : "unknown";
+    const symbols = REGION_ASSETS[defaultRegion];
+    const { riskLevel, summary } = REGION_SUMMARIES[defaultRegion];
+
+    const commodities = await fetchTwelveDataQuotes(symbols);
 
     return {
-        region,
-        displayName: getRegionDisplayName(region),
+        region: defaultRegion,
+        displayName: getRegionDisplayName(defaultRegion),
         commodities,
         riskLevel,
         summary,

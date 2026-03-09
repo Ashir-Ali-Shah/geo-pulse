@@ -20,7 +20,7 @@ import {
     COUNTRY_TO_REGION,
     PULSE_Z_SCORE_THRESHOLD,
 } from "./constants";
-import { resolveCountryKeys } from "./conflictQueryService";
+import { resolveCountryKeys, CONFLICT_THEATERS } from "./conflictQueryService";
 
 // ─── Keyword scoring (mirrors dataProcessor.ts) ────────────────────────────────
 
@@ -121,6 +121,21 @@ export function computeConflictZones(
             primaryCountries: string[];
         }
     >();
+
+    // Pre-populate zoneMap with all known conflict theaters to ensure
+    // they remain on the map even when mention counts drop to 0.
+    for (const theater of CONFLICT_THEATERS) {
+        const resolvedKeys = resolveCountryKeys(theater.primaryCountries, theater.primaryCountries);
+        const finalKey = resolvedKeys[0] ?? (COUNTRY_COORDINATES[theater.primaryCountries[0]] ? theater.primaryCountries[0] : null);
+
+        if (finalKey && !zoneMap.has(finalKey)) {
+            zoneMap.set(finalKey, {
+                key: finalKey,
+                articles: [],
+                primaryCountries: [...theater.primaryCountries],
+            });
+        }
+    }
 
     for (const [rawKey, articles] of articlesByCountry.entries()) {
         // rawKey is a country code from newsdata (e.g. "il", "ua") or
