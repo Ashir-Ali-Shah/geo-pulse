@@ -1,6 +1,9 @@
+// Directive telling Next.js to render this component strictly on the client side
 "use client";
 
+// Import several SVG icons from the lucide-react library to be used in the header UI
 import { Activity, Satellite, Database, RefreshCw } from "lucide-react";
+// Import the useState hook from React to manage component-level state variables
 import { useState } from "react";
 
 /**
@@ -13,9 +16,13 @@ import { useState } from "react";
  * @property dataSource - Indicates the active data source ("mongodb" | other).
  *                        Drives the label shown in the data-source badge.
  */
+// Define the TypeScript interface mapping out expected properties passed to this component
 interface HeaderProps {
+    // Optional function reference triggered upon completion of synchronous background tasks
     onSync?: () => void;
+    // Optional boolean flag overriding button state during active API or database communication
     isSyncing?: boolean;
+    // Optional string metric indicating backend retrieval mechanism presently active
     dataSource?: string;
 }
 
@@ -34,15 +41,21 @@ interface HeaderProps {
  * @param {HeaderProps} props
  * @returns {JSX.Element}
  */
+// Export the main default React component describing the Header layout structure
 export default function Header({
+    // Destructure the onSync callback function passed down from the parent map view
     onSync,
+    // Destructure the syncing state flag while providing a safe default boolean value
     isSyncing = false,
+    // Destructure the literal data source string reference from properties
     dataSource,
+// Map the destructured payload explicitly against the defined HeaderProps interface
 }: HeaderProps) {
     /**
      * Transient status message shown next to the sync button after an attempt.
      * Auto-clears after 3–4 seconds via setTimeout. Null when idle.
      */
+    // Declare reactive state variables managing temporary feedback messages shown near controls
     const [syncMsg, setSyncMsg] = useState<string | null>(null);
 
     /**
@@ -61,43 +74,59 @@ export default function Header({
      * The `onSync` parent callback is invoked on success so the map can
      * re-fetch the updated zone data.
      */
+    // Define an asynchronous function mediating interaction between frontend buttons and backend sync systems
     async function handleSync() {
         // Prevent concurrent syncs while one is already in flight
+        // Halt method execution if a previously initiated synchronization run hasn't successfully resolved yet
         if (isSyncing) return;
 
+        // Immediately update visual UI state declaring initiation of targeted background process flow
         setSyncMsg("Starting sync…");
 
+        // Open structural try-block guarding against unhandled frontend network exceptions
         try {
+            // Execute non-blocking fetch calling immediate background server execution with inline parameter flag
             const res = await fetch("/api/sync?inline=1", { method: "POST" });
+            // Parse resolved backend instruction response directly extracting standard JSON payload
             const data = await res.json();
 
             // Build a human-readable result message based on the API response status
+            // Variable to conditionally format the appropriate resultant status string
             const msg =
+                // Check if background systems asserted perfect 100% successful execution
                 data.status === "complete"
+                    // Return clean checked string citing absolute number of records merged cleanly
                     ? `✓ ${data.zonesComputed} zones synced`
+                    // Check alternatively if systems reported partial failures / restricted rate limit problems
                     : data.status === "partial"
+                        // Return warning string detailing explicit volume totals highlighting partial gaps
                         ? `⚠ ${data.zonesComputed} zones (${data.queriesFailed?.length} failed)`
+                        // Fallback generic catch-all messaging if response format unexpectedly altered
                         : "Sync started";
 
+            // Push the generated dynamic string physically onto the user interface notification layer
             setSyncMsg(msg);
 
             // Auto-dismiss the message after 4 seconds
+            // Trigger temporary timeout function destroying the active visual alert once timer elapses
             setTimeout(() => setSyncMsg(null), 4000);
 
             // Notify parent so it can refresh map data
+            // Verify if parent provided a valid reload callback reference
             if (onSync) onSync();
+        // Catch network structural failures bypassing HTTP parsing layers
         } catch {
             // Surface a generic error message and clear it after 3 seconds
+            // Set simple string describing complete structural network failure
             setSyncMsg("Sync error");
+            // Setup timeout erasing failure string after designated wait duration finishes
             setTimeout(() => setSyncMsg(null), 3000);
         }
     }
 
+    // Return primary component JSX structure representation
     return (
-        /**
-         * Header bar — dark frosted-glass background with a subtle blue-tinted
-         * bottom border to visually separate it from the map canvas below.
-         */
+        /* Header bar — dark frosted-glass background with a subtle blue-tinted bottom border to visually separate it from the map canvas below. */
         <header
             className="flex items-center justify-between px-5 h-14 flex-shrink-0"
             style={{
